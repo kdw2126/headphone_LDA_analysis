@@ -1,0 +1,10 @@
+base
+knitr
+kableExtra
+ggplot2
+ggthemes
+dplyr
+tidyr
+scales
+zoo
+RColorBrewer

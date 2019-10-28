@@ -1,0 +1,227 @@
+```{r setup, include=FALSE, echo = FALSE}
+opts_chunk$set(cache=TRUE)
+setwd("~/Headphone Web Scraping Project/headphones")
+load('myEnvironment.RData')
+library(kableExtra)
+
+```
+
+"Latent Dirichlet Allocation and Topic Modelling: A Link Between The Quantitative and Qualitative?"
+========================================================
+author: Kyle D. Weber
+date: 10/28/2019
+autosize: true
+
+Basic Goal of Presentation
+========================================================
+Three goals:
+- Introduce new dataset with detailed product information and examine predictors of review score 
+- Explain and demonstrate topic modelling techinques, their output, etc
+- Provide some context for how topic modelling can leverage non-quantitative information and ideas
+
+Dataset Used
+========================================================
+Headfi.org is a website for portable audio enthusiasts.
+- Higher traffic than competitors (whathifi.com, avforums.com, headphones.com, audioholics.com, etc.)
+- Has discussion forum and separate review portal containing over 10K headphone reviews and descriptions for 7K products.
+- Average reviewed product has 3.7 reviews.
+
+Visualizing Distribution of Review Scores
+========================================================
+```{r, echo=FALSE, fig.width=18, fig.height=12, fig.show='hold', fig.align='center'}
+library(ggplot2)
+library(ggthemes)
+ggplot(headphone_description_merged, aes(x=review_score.y)) + geom_histogram(binwidth = .5) + xlab("Rating Out of Five") + ylab("Number of Observations") + ggtitle(" ") + theme_few() + scale_fill_few() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+Evolution of Headphone Types By Year
+========================================================
+```{r, echo=FALSE, fig.width=18, fig.height=12, fig.show='hold', fig.align='center'}
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(zoo)
+library(RColorBrewer)
+
+
+modified_date = format(as.Date(headphone_description_merged$date, "%b %d, %Y"), "%b %Y")
+modified_date = as.Date(as.yearmon(modified_date))
+temp = headphone_description_merged
+
+temp$date = modified_date 
+
+
+temp = temp %>%
+  group_by(date, category) %>%
+  filter(category != "Custom") %>%
+  filter(date > "2011-01-01") %>%
+  summarise(total_n = n()) %>% 
+  select(date, total_n, category) %>%
+  group_by(date) %>%
+  mutate(total_n_date = sum(total_n)) %>%
+  mutate(total_n = total_n / total_n_date)
+
+ggplot(temp, aes(x = date, y = total_n, fill = category)) + geom_area(position = 'stack')  + scale_x_date(date_breaks = "1 year", date_labels =  "%b %Y") + xlab("Date") + ylab("Reviews by Category") + ggtitle(" ") + theme_few() + scale_fill_brewer(palette = "Spectral") + theme(plot.title = element_text(hjust = 0.5)) + ylim(0, 1)
+
+```
+
+
+
+Which Brands Are Better and Worse Than Average?
+========================================================
+
+```{r, echo=FALSE, fig.width=18, fig.height=12, fig.show='hold', fig.align='center'}
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(zoo)
+library(knitr)
+library(kableExtra)
+
+brands = c("akg", "apple", "audiotechnica", "beats", "beyerdynamic", "bose", "brainwavz","jvc","sennheiser", "skullcandy", "sony")
+p_values = matrix("0", 11, 4)
+
+colnames(p_values) = c("Different From Average?", "P-Value", "Which Direction?", "Mean Value of Brand")
+rownames(p_values) = brands
+ 
+ for (elements in 1:11){
+   current_element = brands[elements]
+ 
+   p_value = t.test(headphone_description_merged[headphone_description_merged$brand == current_element, "review_score.y"], headphone_description_merged[!headphone_description_merged$brand == current_element, "review_score.y"], , na.action=na.omit, alternative = "two.sided")
+   
+   if (p_value$p.value > .05){
+      p_values[elements, 1] = "No"
+      p_values[elements, 2] = round(p_value$p.value, digits = 4)
+      p_values[elements, 3] = "N/A"
+      p_values[elements, 4] = round(mean(headphone_description_merged[headphone_description_merged$brand == current_element, "review_score.y"], na.rm = T), digits = 2)
+   }
+   else {
+      p_values[elements, 1] = "Yes"
+      if (p_value$statistic < 0){
+        p_values[elements, 2] = ifelse(p_value$p.value < .01, "<.01", round(p_value$p.value, digits = 4))
+        p_values[elements, 3] = "Worse"
+        p_values[elements, 4] = round(mean(headphone_description_merged[headphone_description_merged$brand == current_element, "review_score.y"], na.rm = T), digits = 2)
+
+      }
+      else {
+        p_values[elements, 2] =ifelse(p_value$p.value < .01, "<.01", round(p_value$p.value, digits = 4))
+        p_values[elements, 3] = "Better"
+        p_values[elements, 4] = round(mean(headphone_description_merged[headphone_description_merged$brand == current_element, "review_score.y"], na.rm = T), digits = 2)
+      } 
+   }
+}
+
+kable_styling(kable(p_values), full_width = T) 
+
+```
+
+Do Larger Brands Have Worse Ratings?
+========================================================
+
+```{r, echo=FALSE, fig.width=18, fig.height=12, fig.show='hold', fig.align='center'}
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(zoo)
+library(knitr)
+library(kableExtra)
+
+ggplot(headphone_summary_data2, aes(x = n_brand, y = review_score.y_fn1, size = 6)) + geom_jitter() + ylab("Average Score") + xlab("Number of Products") + theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = .5))  + theme_few() + theme(legend.position = "none") + geom_smooth(method="auto", se=TRUE, fullrange=FALSE, level=0.95)
+
+
+```
+
+
+
+
+What is Topic Modelling? (Pt. 1)
+========================================================
+- Basic idea:  Use statistics to examine which words tend to cluster together and identify topics and their presence by examining which clusters of words tend to appear together in a large body of texts.
+
+- Advantages:
+  - Can be used to generate descriptive statistics for more abstract concepts
+  - Can analyze data at scale and speed human coders can't
+  - Extremely accessible to non-practioners
+
+
+What is Topic Modelling? (Pt. 2)
+========================================================
+- Key caveats: 
+  - Requires additional interpretation
+  - Need to guess number of topics to estimate
+  - Topics not guaranteed to represent relevant concepts
+  
+
+Examining Words Associated with Product Descriptions
+========================================================
+
+```{r, echo=FALSE, results = 'axis'}
+library(knitr)
+kable(ldaOut.terms, row.names = FALSE)
+```
+
+Examining Their Correlation With Rating Score
+========================================================
+
+```{r, echo=FALSE, results = 'axis'}
+library(knitr)
+library(kableExtra)
+  corr_matrix = cor(headphone_description_merged$review_score.y, headphone_description_merged[c(12:21)], use = "pairwise.complete.obs")
+  colnames(corr_matrix) = c("Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5", "Topic 6", "Topic 7", "Topic 8", "Topic 9", "Topic 10")
+kable_styling(kable(corr_matrix), full_width = T) 
+```
+
+Examining Their Correlation With the Probability of Being Reviewed
+========================================================
+
+```{r, echo=FALSE, results = 'axis'}
+library(knitr)
+library(kableExtra)
+  corr_matrix = cor(headphone_description_merged$is_reviewed, headphone_description_merged[c(12:21)], use = "pairwise.complete.obs")
+  colnames(corr_matrix) = c("Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5", "Topic 6", "Topic 7", "Topic 8", "Topic 9", "Topic 10")
+  kable_styling(kable(corr_matrix), full_width = T) 
+```
+
+Most Common Topics for Major Brands
+========================================================
+
+```{r, echo=FALSE, results = 'axis'}
+  library(knitr)
+  library(kableExtra)
+  kable_styling(kable(headphone_summary_data, col.names=c("Brand", "Most Common Topic")), full_width = T)
+```
+
+Examining Words Associated with Cons In Review Text
+========================================================
+
+```{r, echo=FALSE, results = 'axis'}
+library(knitr)
+library(kableExtra)
+kable_styling(kable(ldaOut2.terms, row.names = FALSE), full_width = T)
+```
+
+Examining Their Correlation With Rating Score
+========================================================
+
+```{r, echo=FALSE, results = 'axis'}
+  library(knitr)
+  library(kableExtra)
+  corr_matrix = cor(headphone_review_data$individual_review_score, headphone_review_data[c(9:18)], use = "pairwise.complete.obs")
+  colnames(corr_matrix) = c("Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5", "Topic 6", "Topic 7", "Topic 8", "Topic 9", "Topic 10")
+kable_styling(kable(corr_matrix), full_width = T) 
+```
+
+Next Steps
+========================================================
+Next steps forward:
+- Use the information I have already scraped to isolate forum posts containing reviews of products
+- Run analysis using bigrams as phrases. 
+- Add regression to analysis to examine which topics are most related with high scores.
+
