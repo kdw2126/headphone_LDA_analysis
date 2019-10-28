@@ -121,7 +121,8 @@ headphone_summary_data = headphone_description_merged %>%
     max_value == V9_fn1 ~ "Topic 9",
     max_value == V10_fn1 ~ "Topic 10",
     TRUE ~ "N/A"
-  ))
+  )) %>%
+  select(brand, largest_brand)
 
 
 headphone_summary_data2 = headphone_description_merged %>%
